@@ -16,10 +16,12 @@ model gets a concrete replacement to copy.
 | standalone `find` used to locate files | `find ... -exec/-delete/-print0`, `find ... \| xargs`, `fd` |
 | `cat` / `head` / `tail` of a single file | pipelines, redirections, `tail -f`, `/dev`, `/proc`, `/sys` |
 | bare `ls` / `ls dir` | `ls -la`, `ls -lt`, `ls -S` |
+| recursive `ls -R` / `ls -laR` / `ls --recursive`, routed to the file finder | `ls -R \| head` (pipeline head) |
+| `rtk grep` / `rtk find` / `rtk read` / `rtk ls`, under the rule of the command they replace | `rtk rg`, `rtk tree`, `rtk git`, `rtk test`, … |
 | `read` without `offset`/`limit` on a file over 20 KB or 600 lines | anything smaller, images/archives, an explicit `limit` |
 
 The replacement named in the block message is chosen from the tools actually
-active in the session (`signal_grep`, `ffgrep`, built-in `grep`, `fffind`, …).
+active in the session (`grep`, `signal_grep`, `find`, `read`, `ls`, …).
 If no better tool is active, the call is not blocked.
 
 ## Message shape
@@ -27,8 +29,8 @@ If no better tool is active, the call is not blocked.
 Messages are single-line, positive directives:
 
 ```text
-better-explore: Search content with signal_grep / ffgrep / grep. Bash fallback: rg.
-better-explore: this file is 9,558 lines. Locate with signal_grep, then read with offset+limit. Whole file: repeat with limit=2000.
+better-explore: Search content with grep / signal_grep. Bash fallback: rg.
+better-explore: this file is 9,558 lines. Locate with grep, then read with offset+limit. Whole file: repeat with limit=2000.
 ```
 
 Two constraints drive that shape. Every block is paid for in tokens on each
@@ -50,6 +52,13 @@ turn, so every rule carries explicit escape hatches, and anything ambiguous is
 allowed through. Bash commands are parsed with a quote-, heredoc- and
 substitution-aware scanner rather than a regex, so a literal `grep` inside a
 string or a heredoc never triggers a rule.
+
+**Wrapper-aware classification.** pi-rtk-optimizer rewrites bash commands into
+`rtk <subcommand>` form from inside the same `tool_call` event, so whether a
+rule sees `cat f` or `rtk read f` is a load-order accident. `rtk grep`, `rtk
+find`, `rtk read` and `rtk ls` are therefore folded back onto the binary they
+replace before the rules run, and the verdict is the same for either spelling.
+Subcommands with no blocked counterpart pass through untouched.
 
 **No deadlocks.** A given path is blocked at most twice by the read rule; after
 that it is allowed through, so a model that will not add `offset`/`limit` cannot

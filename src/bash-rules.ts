@@ -6,7 +6,7 @@
  * whole wasted turn, so anything ambiguous is allowed through.
  */
 
-import { parseShellSegments, resolveCommand } from "./shell.ts";
+import { parseShellSegments, type ResolvedCommand, resolveCommand } from "./shell.ts";
 
 /** Which tool family should have handled the job. */
 export type Capability = "searchContent" | "findFiles" | "readFile" | "listDir";
@@ -28,6 +28,28 @@ const FIND_ACTION_FLAGS = new Set([
 	"-fls",
 ]);
 
+/**
+ * `rtk` subcommands that stand in for a blocked binary, mapped to that binary.
+ * pi-rtk-optimizer rewrites `grep`/`find`/`cat`/`head`/`tail`/`ls` into these
+ * forms, and `rtk` is on PATH, so the rewritten and hand-written spellings must
+ * reach the same rule. `rtk rg` is deliberately absent: `rg` is the sanctioned
+ * bash fallback. Everything else (`git`, `test`, `docker`, `tree`, …) is real
+ * bash work and is left alone.
+ */
+const RTK_SUBCOMMANDS = new Map<string, string>([
+	["grep", "grep"],
+	["find", "find"],
+	["read", "cat"],
+	["ls", "ls"],
+]);
+
+/**
+ * `rtk read` flags whose value is a separate word (`--max-lines 50`), produced
+ * when rtk rewrites `head -50 f` / `tail -20 f`. The value must not be counted
+ * as a second file, which would make the read look like a concatenation.
+ */
+const RTK_VALUE_FLAGS = new Set(["--max-lines", "--tail-lines"]);
+
 const REDIRECTION = /^\d*(>>?|<)/;
 
 /** Paths where a bash dump is the only sensible option. */
@@ -35,6 +57,30 @@ const STREAMING_PREFIXES = ["/dev/", "/proc/", "/sys/"];
 
 function isFlag(word: string): boolean {
 	return word.startsWith("-") && word !== "-";
+}
+
+/** `ls` flags that turn a listing into a recursive walk: `-R`, `-laR`, `--recursive`. */
+function isRecursiveListing(word: string): boolean {
+	return word === "--recursive" || /^-[A-Za-z]*R/.test(word);
+}
+
+/**
+ * Rewrite `rtk <subcommand> …` into the native command it replaces, so a single
+ * set of rules covers both spellings. Non-discovery subcommands are returned
+ * unchanged and therefore never match a rule.
+ */
+function unwrapRtk(resolved: ResolvedCommand): ResolvedCommand {
+	if (resolved.name !== "rtk" || resolved.args.length === 0) return resolved;
+	const native = RTK_SUBCOMMANDS.get(resolved.args[0]);
+	if (native === undefined) return resolved;
+
+	const args: string[] = [];
+	for (let i = 1; i < resolved.args.length; i += 1) {
+		const word = resolved.args[i];
+		args.push(word);
+		if (RTK_VALUE_FLAGS.has(word)) i += 1;
+	}
+	return { name: native, args };
 }
 
 function hasRedirection(words: string[]): boolean {
@@ -55,7 +101,7 @@ export function inspectBashCommand(command: string): Capability | null {
 
 		const resolved = resolveCommand(segment);
 		if (!resolved) continue;
-		const { name, args } = resolved;
+		const { name, args } = unwrapRtk(resolved);
 
 		if (GREP_BINARIES.has(name)) return "searchContent";
 
@@ -78,6 +124,9 @@ export function inspectBashCommand(command: string): Capability | null {
 		}
 
 		if (name === "ls") {
+			// A recursive walk is file discovery, and the listing tool cannot do it:
+			// send it to the file finder instead, whatever else the flags carry.
+			if (args.some(isRecursiveListing)) return "findFiles";
 			// Only bare listings; `ls -lt`, `ls -S` etc. have no tool equivalent.
 			if (args.some(isFlag)) continue;
 			if (operands(args).length > 1) continue;

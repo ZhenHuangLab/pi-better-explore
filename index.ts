@@ -35,7 +35,7 @@ interface Guidance {
 const GUIDANCE: Record<Capability, Guidance> = {
 	searchContent: {
 		verb: "Search content with",
-		tools: ["signal_grep", "ffgrep", "grep"],
+		tools: ["grep", "signal_grep"],
 		bash: "rg",
 	},
 	findFiles: {
@@ -90,7 +90,7 @@ export default function (pi: ExtensionAPI) {
 		if (tools.length === 0) return undefined;
 
 		const { verb, bash } = GUIDANCE[capability];
-		const fallback = bash ? ` Bash fallback: ${bash}.` : "";
+		const fallback = bash ? ` If a tool cannot cover it, use \`${bash}\` in bash instead.` : "";
 		return { block: true, reason: `${PREFIX} ${verb} ${tools.join(" / ")}.${fallback}` };
 	};
 

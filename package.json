@@ -1,6 +1,6 @@
 {
   "name": "pi-better-explore",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Tool-boundary enforcement for pi: routes codebase exploration onto bounded search and read tools, keeping the prompt-cache prefix intact",
   "keywords": [
     "pi-package",

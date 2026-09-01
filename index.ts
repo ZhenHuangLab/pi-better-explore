@@ -59,7 +59,7 @@ const GUIDANCE: Record<Capability, Guidance> = {
  */
 const READ_BLOCK_ALLOWANCE = 2;
 
-const PREFIX = "better-explore:";
+
 
 interface BashInput {
 	command?: unknown;
@@ -90,8 +90,9 @@ export default function (pi: ExtensionAPI) {
 		if (tools.length === 0) return undefined;
 
 		const { verb, bash } = GUIDANCE[capability];
+		const toolNoun = tools.length > 1 ? "tools" : "tool";
 		const fallback = bash ? ` If a tool cannot cover it, use \`${bash}\` in bash instead.` : "";
-		return { block: true, reason: `${PREFIX} ${verb} ${tools.join(" / ")}.${fallback}` };
+		return { block: true, reason: `${verb} the built-in ${tools.join(" / ")} ${toolNoun}.${fallback}` };
 	};
 
 	const checkRead = async (
@@ -118,7 +119,7 @@ export default function (pi: ExtensionAPI) {
 
 		return {
 			block: true,
-			reason: `${PREFIX} this file is ${shape}. ${locate} with offset+limit. Whole file: repeat with limit=2000.`,
+			reason: `This file is ${shape}. ${locate} with offset+limit. Whole file: repeat with limit=2000.`,
 		};
 	};
 
